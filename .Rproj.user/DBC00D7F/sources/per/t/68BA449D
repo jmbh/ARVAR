@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1547722091812.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "1440858395",
+    "id" : "68BA449D",
+    "lastKnownWriteTime" : 1547722095,
+    "last_content_update" : 1547722095294,
+    "path" : "/Volumes/Macintosh HD 2/Dropbox/VAR_vs_AR/3_code/ARVAR/Sim_LISA.R",
+    "project_path" : "Sim_LISA.R",
+    "properties" : {
+        "cursorPosition" : "24,30",
+        "scrollLine" : "0"
+    },
+    "relative_order" : 4,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}
