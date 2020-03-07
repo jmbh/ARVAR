@@ -39,7 +39,7 @@ f_eval <- function(A) {
 # --------- Mapping Out the Grid ----------------------------------------------------
 # -----------------------------------------------------------------------------------
 
-Laura_mm <- readRDS("files/MM_MindMaastrict.RDS")
+Laura_mm <- readRDS("files/MM_MindMaastricht.RDS")
 
 nIter <- 10000
 r_A <- list()

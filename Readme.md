@@ -1,6 +1,8 @@
-# Reproducibility Archive
 
-This Readme describes the files in the reproducibility archive for the paper "Choosing between AR(1) and VAR(1) Models in Typical Psychological Applications". It allows to reproduce all analyses and figures in the paper.
+
+# Readme: Reproducibility Archive
+
+This Readme describes the files in the reproducibility archive for the paper XXX. It allows to reproduce all analyses and figures in the paper.
 
 - SampleGrid.R
     - Input: Mixed Model estimated on "MindMaastricht" data (in /files)
@@ -25,4 +27,6 @@ The scripts above make use of the following files:
 - cell_positions.RDS: A matrix that contains the cell positions (x/y positions of borders)
 - EE_comp.RDS: Finished computation of EE_comp values; included since it takes a while to compute it; this file is created in PlottingFigures.R
 
-We did not include the 100 simulation output files in this archive due to their size (~16GB). However, we are happy to provide those files on request.
+We did not include the 100 simulation output files in this archive due to their size (~15GB). However, we are happy to provide those files on request.
+
+
