@@ -1,5 +1,5 @@
 # Reproducibility Archive
-This Readme describes the files in the reproducibility archive for **Dablander, F.**<sup><small>&#11089;</small></sup>, Ryan, O.<sup><small>&#11089;</small></sup>, & Haslbeck, J.M.B.<sup><small>&#11089;</small></sup> (under review). Choosing between AR(1) and VAR(1) Models in Typical Psychological Applications. [[Link](https://psyarxiv.com/qgewy/)]. It allows one to reproduce all analyses and figures in the paper.
+This Readme describes the files in the reproducibility archive for Dablander, F.<sup><small>&#11089;</small></sup>, Ryan, O.<sup><small>&#11089;</small></sup>, & Haslbeck, J.M.B.<sup><small>&#11089;</small></sup> (under review). Choosing between AR(1) and VAR(1) Models in Typical Psychological Applications. [[Link](https://psyarxiv.com/qgewy/)]. It allows one to reproduce all analyses and figures in the paper.
 
 - SampleGrid.R
     - Input: Mixed Model estimated on "MindMaastricht" data (in /files)
