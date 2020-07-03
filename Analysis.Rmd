@@ -1,0 +1,378 @@
+---
+title: "Analysis and Visualisation"
+author: "Fabian Dablander, Oisín Ryan, Jonas Haslbeck"
+date: "7/03/2020"
+output:
+  html_document:
+    toc: true
+    theme: united
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, warning = FALSE, message = FALSE, eval = TRUE,
+  fig.align = 'center', fig.width = 8, fig.height = 6, dpi = 400
+)
+```
+
+# Data Preparation
+The simulation results are stored in the 'out_var_final.RDS' file, which is a list of the form 74 (cells) x 100 (models) x 100 (replications) x 2 (prediction / estimation error). This file is not in the repository due to its size, but is available upon request. The models, i.e., VAR matrices, are stored in the 'models_74cells.RDS' file, which is a list of length 74 (cells) x 100 (models).
+
+The file 'out_stable.RDS' stores the diagonal and off-diagonal values of each stable VAR matrix (i.e., models; 9998 in total). The file 'cell_positions.RDS' stores the diagonal and off-diagonal values of each cell (in particular, the values of its center; for visualisation later). 
+
+```{r}
+# list: 74 (cells) x 100 (models) x 100 (replications) x 2 (PE / EE)
+# out_var[[1]][[1]]$EE_all gives an array 493 (n) x 2 (AR / VAR) x 100 (replication) [estimation error]
+# out_var[[1]][[1]]$PE_all gives an array 493 (n) x 2 (AR / VAR) x 100 (replication) [prediction error]
+# out_var <- readRDS('files/out_var.RDS')
+
+# list: 74 (cells) x 100 (models) giving the sampled VAR matrix
+var_mats <- readRDS('files/models_74cells.RDS')
+
+# Characteristics of all 9998 stable VAR matrices of initial 10000
+out_stable <- readRDS('files/out_stable.RDS')
+m_cell_fill <- readRDS('files/cell_positions.RDS')[, -3]
+```
+
+We want to get an intuition for how likely a VAR matrix is to be in a particular cell. To estimate this, we calculate how many of the VAR matrices we sampled are in each cell, using the 'get_cell' function from 'aux_functions.R'. Once we have these cell weights, we calculate the model weights by using the 'get_model_weights' function, also from 'aux_functions.R'. This uses the fixed effects VAR matrix stored in 'MM_MindMaastricht.RDS' to assess the likelihood of observing particular VAR matrices. Since we have 100 distinct matrices (i.e., models) for each of the 74 cells, this yields an object of length 7400. Now, since we do 100 replications for each of these, we have an object of length 7400,00, stored as 'model_weights_all'.
+
+```{r}
+source('aux_functions.R')
+
+# Compute cell weights
+cell_var <- apply(out_stable, 1, get_cell)
+cell_weights <- table(cell_var) / length(cell_var)
+
+# Compute model weights
+model_weights <- get_model_weights(var_mats)
+model_weights_all <- rep(model_weights, each = 100)
+model_weights_all <- model_weights_all / sum(model_weights_all)
+```
+
+
+# Figure 1
+In Figure one, we show at which $n$ the VAR model outperforms the AR model in terms of estimation error. We do this in three steps: showing the average across cells, models, and replications; showing the performance for each of the 74 x 100 models averaged over replications; showing three specific models averaged over cells and replications (??). In the following, we prepare these panels in turn.
+
+
+## Figure 1: Panel (a)
+We use the function 'get_all_ee_curves', which computes the difference in estimation error for each cell, model, and replication. We have simulated the estimation error for $n = [8, ..., 500]$, and so 'diffs_mat' is a 740,000 x 493 matrix.
+
+```{r}
+# Compute difference in estimation error for all cells, models, and replications
+# diffs_mat <- get_all_ee_curves(out_var, nr_models = 100, nr_iter = 100)
+
+diffs_mat <- readRDS('files/diffs_mat.RDS')
+dim(diffs_mat)
+```
+
+We only visualise up until $n = 200$, since by then the VAR model is almost always better than the AR model. Using the 'plot_fig123' function, below we plot Panel (a) in Figure 1.
+
+```{r}
+source('plotting_functions.R')
+
+# pdf('figures/Fig1-a.pdf', width = 6, height = 6)
+plot_fig123(diffs_mat, model_weights_all, figtype = 1, letter = '(a)')
+# dev.off()
+```
+
+
+## Figure 1: Panel (b)
+In Panel (b), we show results for all 74 (cells) x 100 (models) VAR models. We manipulate the full 'diffs_mat' to create a list of length 7400 where each element is a 100 (replications) x 439 (n) matrix. We take the median over all these replications for the visualisation.
+
+```{r}
+# Put this into a 74 * 100 = 7400 list
+diffs7400_100 <- list()
+
+for (i in seq(0, 7399)) { # we have 7400 models and 100 replications
+  lo <- ifelse(i == 0, 1, i*100 + 1)
+  hi <- (i + 1)*100
+  diffs7400_100[[i+1]] <- diffs_mat[seq(lo, hi), ]
+}
+
+diffs7400_median <- lapply(seq(7400), function(i) {
+  apply(diffs7400_100[[i]], 2, median)
+})
+
+diffs7400_median_flat <- do.call('rbind', diffs7400_median)
+dim(diffs7400_median_flat)
+```
+
+We pick out three models for colouring.
+
+```{r}
+# pdf('figures/Fig1-b.pdf', width = 6, height = 6)
+plot_fig123(
+  diffs7400_median_flat,
+  model_weights, cells_coloured = c(48, 125, 412),# 250), # red, blue, green
+  figtype = 2, letter = '(b)'
+)
+# dev.off()
+```
+
+## Figure 1: Panel (c)
+For Panel (c), we visualize only the three models above, showing the uncertainty using the replications.
+
+```{r}
+# pdf('figures/Fig1-c.pdf', width = 6, height = 6)
+plot_fig123(diffs7400_100, model_weights, figtype = 3, letter = '(c)')
+# dev.off()
+```
+
+
+# Figure 2
+For Figure 2, we visualize the median $n_e$ at which the estimation error of the VAR model is better than the estimation error of the AR model, for each cell (Panel (a)) and as a histogram (Panel (b)). To do this, we calculate $n_e$ for all 74 (cells) x 100 (models) x 100 (replications) runs. This is done using the 'compute_nswitch' function.
+
+Note that we resample the runs according to their probability of occuring (as computed above in the model weights). If we did not reweight the samples, then we would downward bias $n_e$, since all VAR matrices would be treated equal, including those with very large off-diagonal coefficients (which are less likely). For 23 cases, there is no crossing, and we set those to the maximum observed crossing
+
+```{r}
+# weighted nswitch for all 740.000 runs
+nswitch_all <- compute_nswitch(diffs_mat, model_weights_all, seed = 1)
+# nswitch_all2 <- compute_nswitch(diffs_mat, NULL, seed = 1)
+
+nswitch_all[is.na(nswitch_all)] <- max(nswitch_all, na.rm = TRUE) # Only 23 cases!
+
+c(mean(nswitch_all), median(nswitch_all))
+```
+
+Here, we calculate the $n_e$ for each cell. Note that reweighting is not needed here, since we are explicitly interested in the $n_e$ per cell, without an assessment of how likely it is that a VAR matrix comes from that particular cell. To calculate $n_e$ for each cell, we need to average over replications as well as models.
+
+```{r}
+nswitch_models <- sapply(diffs7400_median, function(x) which(x > 0)[1] + 7)
+nswitch_cells <- apply(matrix(nswitch_models, nrow = 100, ncol = 74), 2, median)
+```
+
+
+```{r}
+# pdf('figures/Fig2-EE-Gap-Hist.pdf', width = 10, height = 5)
+par(mfrow = c(1, 2), pty = 's')
+cols <- brewer.pal(9, 'Blues')
+more_cols <- colorRampPalette(cols)(14)
+plot_gaps(nswitch_cells, '', m_cell_fill, cols = more_cols, cex = .5, alpha = 1)
+
+.gradientLegend(
+  valRange = round(c(min(nswitch_cells), max(nswitch_cells))),
+  color = more_cols, n.seg = 2, pos = c(.48, .01, .5, .05), coords = TRUE, cex = 0.6
+)
+
+text(0.48, 0.2, '(a)', col = 'black', cex = 1.2, adj = 0)
+plot_histogram(nswitch_all, med = median(nswitch_all), xlim = c(8, 493))
+text(470, 99400, '(b)', col = 'black', cex = 1.2, adj = 0)
+# dev.off()
+```
+
+
+# Figure 3
+Figure 3 illustrates $n_{\text{gap}}$, that is, the difference between the $n$ at which the estimation error of the VAR is lower and the $n$ at which its prediction error is lower, using two different models.
+
+We store all models (74 x 100) and their 100 replications in a list 'models7400_100'; we need the full simulation output 'out_var' to compute this. Since we would run out of memory otherwise, we delete 'diffs_mat' and 'diffs7400_100'.
+
+```{r}
+rm(diffs_mat)
+rm(diffs7400_100)
+
+out_var <- readRDS('files/out_var.RDS')
+models7400_100 <- list()
+
+j <- 1
+for (cell in seq(74)) {
+  for (iter in seq(100)) {
+    models7400_100[[j]] <- out_var[[cell]][[iter]]
+    j <- j + 1
+  }
+}
+```
+
+
+```{r}
+# pdf("figures/Fig3-ModelGaps.pdf", width = 8*sc, height = 4*sc)
+sc <- 1.2
+par(mfrow = c(1, 2))
+cols <- brewer.pal(11, "PiYG")
+
+plot_model_curves(
+  models7400_100, model = 302, ylim = c(0, .025),lwd = 2, legend = TRUE, 
+  legend.cex = .8, n_seq_ss = 40:100, block_cols = cols[c(9, 1)], alpha_val = .2
+)
+
+plot_model_curves(
+  models7400_100, model = 5500, ylim = c(0, .01), lwd = 2, legend = FALSE, 
+  n_seq_ss = 60:180, block_cols = cols[c(9, 1)], alpha_val = .2
+)
+# dev.off()
+
+D <- function(mat) mean(abs(diag(mat)))
+OD <- function(mat) mean(abs(mat[diag(mat) != mat]))
+
+# model = 302 => Model 2 in Cell 3
+a <- var_mats[[3]][[2]]
+D(a)
+OD(a)
+
+# model = 5500 => Model 100 in Cell 54
+b <- var_mats[[54]][[100]]
+D(b)
+OD(b)
+```
+
+
+# Figure 4
+Figure 3 shows $n_{\text{gap}}$ for only two models. Figure 4 (a) shows the expected $n_{\text{gap}}$ for all 7400 models. Now, we compute the $n_{\text{gap}} for each model ('ngaps_models').
+
+```{r}
+ngaps_models <- sapply(models7400_100, function(m) {
+  ee <- m$EE_all
+  pe <- m$PE_all
+  
+  gaps <- sapply(seq(100), function(i) {
+    ee_diff <- ee[, 1, i] - ee[, 2, i]
+    pe_diff <- pe[, 1, i] - pe[, 2, i]
+    get_gap_diff(pe_diff, ee_diff)
+  })
+  
+  median(gaps)
+})
+```
+
+We use the 'get_ee_comp' function to compare, in terms of estimation error, (1) selecting the model with lowest prediction error and (2) using the one standard error rule. For each cell, each model, and each $n$, we compute $\text{EE}_{\text{comp}}$ averaged over all replications.
+
+```{r}
+# ee_all <- get_ee_comp(out_var)
+ee_all <- readRDS('files/EE_comp.RDS')
+dim(ee_all)
+```
+
+Below, we get the $\text{EE}_{\text{comp}}$ for each model.
+
+```{r}
+ee_comp <- matrix(0, nrow = 7400, ncol = 493)
+
+j <- 1
+for (cell in seq(74)) {
+  for (m in seq(100)) {
+    ee <- ee_all[cell, m, , ]
+    ee_comp[j, ] <- ee[2, ] - ee[1, ]
+    j <- j + 1
+  }
+}
+```
+
+We are only interested in the cases where the two rules pick different models. And we again weight the comparisons by how likely each model is.
+
+```{r}
+ee_comp_relevant <- sapply(seq(7400), function(i) {
+  relevant <- which(ee_comp[i, ] != 0)
+  ee_comp[i, relevant]
+})
+
+ee_comp_model_weights <- rep(model_weights, times = sapply(ee_comp_relevant, length))
+ee_comp_model_weights <- ee_comp_model_weights / sum(ee_comp_model_weights)
+```
+
+Below we plot the Figure 4.
+
+```{r}
+# pdf('figures/Fig4-Ngap-EEcomp-Histogram.pdf', width = 10, height = 6)
+par(mfrow = c(1, 2))
+plot_ngaps_hist(ngaps_models, weight = model_weights)
+text(48, 0.29, '(a)', col = 'black', cex = 1.2, adj = 0)
+
+# plot the weighted histogram for ee_comp
+wtd.hist(
+  unlist(ee_comp_relevant), weight = ee_comp_model_weights, breaks = 100, main = '',
+  xlab = TeX('$$Expected EE_{comp}$$'), col = 'grey76', ylab = '',
+  xaxt = 'n', las = 2, ylim = c(0, .3)
+)
+
+x_labels <- seq(-.01, .05, .01)
+axis(1, x_labels, las = 1)
+axis(2, labels = FALSE)
+title(ylab = 'Weighted Frequency', line = 3)
+text(.045, 0.29, '(b)', col = 'black', cex = 1.2, adj = 0)
+# dev.off()
+```
+
+We correlate the $O$ and $D$ values with $n_{\text{gap}}$ for each model.
+
+```{r}
+all_matrices <- vector('list', length = 7400)
+
+ix <- 1
+for (i in seq(74)) {
+  for (j in seq(100)) {
+    all_matrices[[ix]] <- var_mats[[i]][[j]]
+    ix <- ix + 1
+  }
+}
+
+all_D <- sapply(all_matrices, D)
+all_OD <- sapply(all_matrices, OD)
+
+# sum(is.na(ngaps_models)) # 31 do not cross
+m <- lm(ngaps_models ~ all_D * all_OD)
+summary(m)$r.squared
+cor(all_D, ngaps_models, use = 'pairwise.complete.obs')
+cor(all_OD, ngaps_models, use = 'pairwise.complete.obs')
+```
+
+```{r}
+# Correlate crossing with ngap
+ncrossings_models <- sapply(models7400_100, function(m) {
+  ee <- m$EE_all
+  pe <- m$PE_all
+  
+  gaps <- sapply(seq(100), function(i) {
+    ee_diff <- ee[, 1, i] - ee[, 2, i]
+    pe_diff <- pe[, 1, i] - pe[, 2, i]
+    get_crossing(pe_diff)
+  })
+  
+  median(gaps)
+})
+
+cor(ngaps_models, ncrossings_models, use = 'pairwise.complete.obs')
+```
+
+# Figure 5
+Panel (a) shows $\text{EE}_{\text{comp}}$ as a function of $n$, for all cases where the two rules do not pick the same model.
+
+```{r}
+ee_comp_na <- ee_comp
+ee_comp_na[which(ee_comp_na == 0)] <- NA
+
+# pdf('Figures/Fig5-1SE.pdf', width = 10, height = 5)
+plot_1SE(ee_comp_na, model_weights)
+# dev.off()
+```
+
+# Figure 6
+This figure shows the sampled grid.
+
+```{r}
+n_box <- 15
+
+# pdf('figures/SampleGrid.pdf', height = 6.2, width = 6)
+plot.new()
+plot.window(xlim = c(0, 0.5), ylim = c(0, 0.2))
+axis(1)
+axis(2, las = 2)
+
+title(xlab = 'Mean Absolute Diagonal')
+title(ylab = 'Mean Absolute Off-Diagonal')
+
+points(
+  out_stable$D, out_stable$OffD, pch = 20,
+  col = grDevices::adjustcolor('black', alpha = 0.5)
+)
+
+x_seq <- seq(0, 0.5, length = n_box)
+y_seq <- seq(0, 0.2, length = n_box)
+
+segments(x_seq, rep(0, n_box), x_seq, rep(0.2, n_box))
+segments(rep(0, n_box), y_seq, rep(0.5, n_box), y_seq)
+
+text(m_cell_fill[, 1], m_cell_fill[, 2], seq(74), col = 'red')
+# dev.off()
+```
+
+
+

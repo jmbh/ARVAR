@@ -1,4 +1,4 @@
-# jonashaslbeck@gmail.com; November 2018
+# jonashaslbeck@gmail.com; May 2020
 
 # Get iter from command line ...
 iter <- commandArgs(trailingOnly=TRUE)
@@ -13,23 +13,22 @@ library(foreach)
 library(doParallel)
 
 # Data Generation
-library(mlVAR)
+# library(mlVAR) # we use a function in aux_functions.R instead
 
-source("aux_functions.R")
+source("aux_functions_sim.R")
 
-
+ 
 # -----------------------------------------------------------------------------
 # ---------- Load Models ------------------------------------------------------
 # -----------------------------------------------------------------------------
 
-l_CM <- readRDS(file = "Models_60cells.RDS")
-# l_CM <- readRDS(file = "/Volumes/Macintosh HD 2/Dropbox/VAR_vs_AR/3_code/VAR_vs_AR_code/Simulation_3_Variation_2Dim/l_CM_60cells.RDS")
+# l_CM <- readRDS(file = "files/Models_74cells.RDS") # local
+l_CM <- readRDS(file = "Models_74cells.RDS")
 
-# Fixed stuff
+# Fixed things
 p <- 6
 means <- rep(0, p) # mean vector
-E <- matrix(0, p, p) # error covariance matrix
-diag(E) <- 1
+E <- diag(p) # error covariance matrix
 
 # n variation
 n_seq <- 8:500
@@ -45,8 +44,8 @@ cl <- makeCluster(nClust)
 registerDoParallel(cl)
 
 # start clustered loops
-outlist <- foreach(cell=1:60,
-                   .packages=c("mlVAR"),
+outlist <- foreach(cell=1:74,
+                   # .packages=c("mlVAR"),
                    .verbose=FALSE,
                    .export=c("l_CM", "fSimulate", "fEstimate", "means", "E", "n_seq")) %dopar% {
 
@@ -58,7 +57,7 @@ outlist <- foreach(cell=1:60,
                      outlist <- fSimulate(Ar = l_CM[[cell]][[iter]],
                                           means = means,
                                           E = E,
-                                          nIter = 100, # before 1
+                                          nIter = 100, # we repeat the simulation for EACH model in EACH cell 100 times
                                           verbatim = FALSE,
                                           n_seq = n_seq)
                      
@@ -75,7 +74,7 @@ stopCluster(cl)
 
 # --------- Save Results ---------
 
-saveRDS(outlist, file = paste0('ARVAR_no3_Iter_', iter, '.RDS'))
+saveRDS(outlist, file = paste0('ARVAR_2020_Iter_', iter, '.RDS'))
 
 
 

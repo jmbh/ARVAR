@@ -1,4 +1,5 @@
 # jonashaslbeck@gmail.com; August 2018
+# dablander.fabian@gmail.com; June 2020
 
 
 # -----------------------------------------------------------------------------------
@@ -10,10 +11,10 @@
 simVAR <- function(pars, 
                    means = 0, 
                    lags = 1, Nt = 100, init, residuals = 0.1, 
-                   burnin) 
+                   burnin)
 {
   
-  print(pars)
+  # print(pars)
   
   if (is.matrix(pars)) 
     pars <- list(pars)
@@ -104,12 +105,17 @@ f_eval2 <- function(A) {
 
 # --------- Compute the Gap ----------
 
-get_gap_diff <- function(pe_diff, ee_diff, n_seq = 8:200) {
+get_gap_diff <- function(pe_diff, ee_diff, n_seq = 8:500) {
   n_pe <- which(pe_diff > 0)[1]
   n_ee <- which(ee_diff > 0)[1]
   
   gap <- n_seq[n_ee] - n_seq[n_pe]
   gap
+}
+
+get_crossing <- function(pe_diff, n_seq = 8:500) {
+  n_pe <- which(pe_diff > 0)[1]
+  n_seq[n_pe]
 }
 
 # --------- ? ----------
@@ -136,19 +142,19 @@ compute_average <- function(error_mat) {
 # --------- Computes average Gap for all Cells ----------
 
 #' takes simulation output, returns list of 600.000 estimation error differences
-get_all_ee_curves <- function(out_var, cells = seq(60), cols = 1:193) {
-  nsim <- length(cells) * 100 * 100
+get_all_ee_curves <- function(out_var, nr_models = 100, nr_iter = 100, cells = seq(74), cols = seq(493)) {
+  nsim <- length(cells) * nr_models * nr_iter
   ee_diff <- matrix(NA, nrow = nsim, ncol = length(cols))
   
   index <- 1
   
   for (cell in cells) {
-    for (model in seq(100)) {
-      for (iter in seq(100)) {
+    for (model in seq(nr_models)) {
+      for (iter in seq(nr_iter)) {
         m <- out_var[[cell]][[model]]
         
         out <- m$EE_all[, , iter]
-        ee_diff[index, ] <- out[cols, 1] - out[cols, 2]
+        ee_diff[index, ] <- out[, 1] - out[, 2]
         
         index <- index + 1
       }
@@ -159,30 +165,48 @@ get_all_ee_curves <- function(out_var, cells = seq(60), cols = 1:193) {
 }
 
 
-# Input: Simulation Results
-# Output: average gap for each Cell
-compute_diff_first <- function(out_var) {
+# Function to compute cell freq
+get_cell <- function(row, ODbound = 0.03571429/2, Dbound = 0.01428571/2, p = 6) {
+  is_within <- function(x, vec) x > vec[1] && x < vec[2]
   
-  diff_first <- numeric(n_cells)
+  OD <- row[1]
+  D <- row[2]
+  
+  cell_pos <- apply(m_cell_fill, 1, function(x) { 
+    cell <- as.numeric(x)
+    ODbounds <- c(cell[1] - ODbound, cell[1] + ODbound)
+    Dbounds <- c(cell[2] - Dbound, cell[2] + Dbound)
+    is_within(OD, ODbounds) && is_within(D, Dbounds)
+  })
+  
+  stopifnot(sum(cell_pos) == 1)
+  which(cell_pos)
+}
+
+
+# Compute ngap for each cell
+compute_ngap_cells <- function(out_var, n_cells = 74) {
+  
+  ngap_cell <- numeric(n_cells)
   
   for (cell in seq(n_cells)) {
-    pe <- lapply(out_var[[cell]], function(x) x$PE[, 1:2])
-    ee <- lapply(out_var[[cell]], function(x) x$EE[, 1:2])
-    
+    pe <- lapply(out_var[[cell]], function(x) x$PE_all[, , 1:100])
+    ee <- lapply(out_var[[cell]], function(x) x$EE_all[, , 1:100])
+   
     # compute the differences across all ns
-    arvar_diff <- sapply(seq(n_rep), function(i) {
-      pe_diff <- pe[[i]][, 1] - pe[[i]][, 2] # AR - VAR (PE)
-      ee_diff <- ee[[i]][, 1] - ee[[i]][, 2] # AR - VAR (EE)
+    arvar_diff <- sapply(seq(100), function(i) {
+      pe_diff <- pe[[i]][, 1, i] - pe[[i]][, 2, i] # AR - VAR (PE)
+      ee_diff <- ee[[i]][, 1, i] - ee[[i]][, 2, i] # AR - VAR (EE)
       
       gap <- get_gap_diff(pe_diff, ee_diff)
       gap
     })
     
     # compute the mean across differences
-    diff_first[cell] <- round(mean(arvar_diff, na.rm = TRUE), 2)
+    ngap_cell[cell] <- round(mean(arvar_diff, na.rm = TRUE), 2)
   }
   
-  diff_first
+  ngap_cell
 }
 
 
@@ -221,25 +245,22 @@ get_weighted_samples <- function(diffs_mat, model_weights, seed = 1) {
 
 
 # -------- Compute Weight of each Model --------
-
-get_model_weights <- function() {
+get_model_weights <- function(var_mats, mind_maastricht = 'files/MM_MindMaastricht.RDS') {
   library('mvtnorm')
-  l_CM <- readRDS(file = "files/Models_60cells.RDS")
-  mm <- readRDS(file="files/MM_MindMaastricht.RDS")
+  
+  mm <- readRDS(file = mind_maastricht)
+  len <- length(var_mats)
   
   M <- as.numeric(mm[, , 1])
   S <- diag(as.numeric(mm[, , 2]))
   
   counter <- 1
-  weights <- rep(NA, 60*100)
+  weights <- rep(NA, len * 100)
   
-  for(d in 1:60) {
-    for(i in 1:100) {
-      
-      x <- as.numeric(l_CM[[d]][[i]])
-      
+  for (d in seq(len)) {
+    for (i in 1:100) {
+      x <- as.numeric(var_mats[[d]][[i]])
       weights[counter] <- dmvnorm(x, mean = M, sigma = S, log = FALSE)
-      
       counter <- counter + 1
     }
   }
@@ -247,6 +268,84 @@ get_model_weights <- function() {
   weights / sum(weights)
 }
 
+
+#' Computes the n at which the estimation error is better for VAR
+#' either using resampling or not; offset is due to the fact that we do not sample the first
+#' 7 ns because the errors have high variance with such low n
+compute_nswitch <- function(diffs_mat, model_weights = NULL, seed = 1, offset = 7) {
+  if (!is.null(model_weights)) {
+    diffs_mat <- get_weighted_samples(diffs_mat, model_weights, seed = seed)
+  }
+  
+  nswitch <- apply(diffs_mat, 1, function(diffs) which(diffs > 0)[1] + offset)
+  nswitch
+}
+
+
+get_ee_comp <- function(out_var, n_cells = 74, n_rep = 100, n_models = 100, n_seq = 8:500) {
+  ee_comp <- array(NA, dim = c(n_cells, n_models, 2, 493)) # 74 cells, 100 models, 100 replications, 2 rules, 493 ns
+  
+  for (cell in seq(n_cells)) {
+    for (m in seq(n_models)) {
+      
+      pe <- out_var[[cell]][[m]]$PE_all
+      ee <- out_var[[cell]][[m]]$EE_all
+      
+      # Average prediction errors
+      pe_ar <- apply(pe[, 1, ], 1, mean)
+      pe_var <- apply(pe[, 2, ], 1, mean)
+      
+      # Standard error of VAR prediction error
+      pe_se_var <- apply(pe[, 2, ], 1, sd) / sqrt(n_seq)
+      
+      # Average estimation errors
+      ees <- cbind(
+        apply(ee[, 1, ], 1, mean), # AR
+        apply(ee[, 2, ], 1, mean)  # VAR
+      )
+      
+      # Choose model with lowest prediction error
+      sel_rule1 <- (pe_var < pe_ar) + 1
+      
+      # 1 Standard Error Rule
+      sel_rule2 <- ((pe_var + pe_se_var) < pe_ar) + 1
+      
+      best <- (ee_var < ee_ar) + 1
+      
+      ee_sel <- sapply(seq(493), function(i) {
+        c('best' = ees[i, best[i]], 'rule1' = ees[i, sel_rule1[i]], 'rule2' = ees[i, sel_rule2[i]])
+      })
+      
+      ee_comp[cell, m, 1, ] <- ee_sel[1, ] - ee_sel[2, ]
+      ee_comp[cell, m, 2, ] <- ee_sel[1, ] - ee_sel[3, ]
+      
+      # # Average over repetitions
+      # for (i in seq(n_rep)) {
+      #   # Rule 1: Choose model with lowest prediction error
+      #   pred <- pe[, , i]
+      #   sel_rule1 <- apply(pred, 1, which.min)
+      #   
+      #   # Rule 2: 1SER
+      #   sel_rule2 <- sapply(seq(493), function(i) {
+      #     (pred[i, 1] > (pred[i, 2] + pe_se_var[i])) + 1
+      #   })
+      #   
+      #   est <- ee[, , i]
+      #   best <- apply(est, 1, which.min)
+      #   
+      #   ee_sel <- sapply(seq(493), function(i) {
+      #     c('best' = est[i, best[i]], 'rule1' = est[i, sel_rule1[i]], 'rule2' = est[i, sel_rule2[i]])
+      #   })
+      # }
+      
+    } # end for: i
+    
+    print(cell)
+    
+  } # end for: d
+  
+  ee_comp
+}
 
 # -----------------------------------------------------------------------------------
 # --------- Aux Functions 2 -----------------------------------------------------------
@@ -315,8 +414,6 @@ fEstimate <- function(train, test, model = "AR", trueVAR) {
     }
   }
   
-  # browser()
-  
   ## Compute errors
   # Estimation Error
   MSE_EE <- mean((m_VAR - trueVAR)^2)
@@ -342,6 +439,9 @@ fEstimate <- function(train, test, model = "AR", trueVAR) {
                   "R2_PE" = v_R2_PE)
   
 } # eoF
+
+
+
 
 # # Testing
 # train <- data[1:1500, ]
@@ -377,7 +477,7 @@ fSimulate <- function(Ar,
   
   # Storage
   n_var <- length(n_seq)
-  a_PE <- a_EE <- a_EEf <- array(NA, dim = c(n_var, 3, nIter))
+  a_PE <- a_EE <- a_EEf <- array(NA, dim = c(n_var, 2, nIter))
   
   
   for(i in 1:nIter) {
@@ -388,7 +488,7 @@ fSimulate <- function(Ar,
                    lags = 1, 
                    Nt = n_seq[length(n_seq)],
                    residuals = E)
-
+    
     l_data[[i]] <- data
     
     for(n in 1:n_var) {
@@ -413,14 +513,15 @@ fSimulate <- function(Ar,
       a_PE[n, 2, i] <- out_VAR$MSE_PE
       a_EE[n, 2, i] <- out_VAR$MSE_EE
       
-      # ----- Fit VAR / cAR model & make predictions -----
-      out_cAR <- fEstimate(train = data[1:n_seq[n], ], 
-                           test = testset, 
-                           model = "cAR", 
-                           trueVAR = Ar)
-      
-      a_PE[n, 3, i] <- out_cAR$MSE_PE
-      a_EE[n, 3, i] <- out_cAR$MSE_EE
+      # ## REMOVED BY JONAS MAY 27
+      # # ----- Fit VAR / cAR model & make predictions -----
+      # out_cAR <- fEstimate(train = data[1:n_seq[n], ], 
+      #                      test = testset, 
+      #                      model = "cAR", 
+      #                      trueVAR = Ar)
+      # 
+      # a_PE[n, 3, i] <- out_cAR$MSE_PE
+      # a_EE[n, 3, i] <- out_cAR$MSE_EE
       
       
       if(verbatim) cat(paste0("Iteration = ", i, " n = ", n, "\n"))
@@ -430,27 +531,31 @@ fSimulate <- function(Ar,
   
   # --------- Aggregate over Iteration ----------
   
-  # browser()
+  # ## Removed by Jonas May 27th to save memory (computing these summaries can be done later)
+  #
+  # # Means
+  # m_PE <- apply(a_PE, 1:2, median) # prediction errors
+  # m_EE <- apply(a_EE, 1:2, median) # estimation errors
+  # 
+  # # Upper / Lower 25% quantile
+  # PE_qu <- apply(a_PE, 1:2, function(x) quantile(x, probs = c(.25, .75)))
+  # EE_qu <- apply(a_EE, 1:2, function(x) quantile(x, probs = c(.25, .75)))
   
-  # Means
-  m_PE <- apply(a_PE, 1:2, median)
-  m_EE <- apply(a_EE, 1:2, median)
+  # --------- Reducing Memory ----------
   
-  # Upper / Lower 25% quantile
-  PE_qu <- apply(a_PE, 1:2, function(x) quantile(x, probs = c(.25, .75)))
-  EE_qu <- apply(a_EE, 1:2, function(x) quantile(x, probs = c(.25, .75)))
-  
+  a_PE <- round(a_PE, 5)
+  a_EE <- round(a_EE, 5)
+  a_EEf <- round(a_EEf, 5)
   
   # --------- Return Results ----------
   
-  outlist <- list("PE" = m_PE, 
-                  "PE_qu" = PE_qu,
-                  "EE" = m_EE, 
-                  "EE_qu" = EE_qu, 
-                  "PE_all" = a_PE, 
-                  "EE_all" = a_EE, 
-                  "EEf_all" = a_EEf)
-  
+  outlist <- list( #"PE" = m_PE, 
+    #"PE_qu" = PE_qu,
+    #"EE" = m_EE, 
+    #"EE_qu" = EE_qu, 
+    "PE_all" = a_PE, 
+    "EE_all" = a_EE, 
+    "EEf_all" = a_EEf)
   
 } # end of Simulation Func
 
@@ -499,212 +604,3 @@ plot_weights <- function(cell = 1) {
 #   
 #   diff[d] <- w - cw
 # }
-
-
-
-
-#' Adapted from plotfunctions::gradientLegend
-.gradientLegend <- function (valRange, color = "topo", nCol = 30, pos = 0.5, side = 4, 
-                             length = 0.25, depth = 0.05, inside = TRUE, coords = FALSE, 
-                             pos.num = NULL, n.seg = 3, border.col = "black", dec = NULL, 
-                             fit.margin = TRUE, cex = 0.8) 
-{
-  loc <- c(0, 0, 0, 0)
-  if (is.null(pos.num)) {
-    if (side %in% c(1, 3)) {
-      pos.num = 3
-    }
-    else {
-      pos.num = side
-    }
-  }
-  if (length(pos) == 1) {
-    pos.other <- ifelse(side > 2, 1, 0)
-    if (side %in% c(1, 3)) {
-      switch <- ifelse(inside, 0, 1)
-      switch <- ifelse(side > 2, 1 - switch, switch)
-      loc <- getCoords(c(pos - 0.5 * length, pos.other - 
-                           switch * depth, pos + 0.5 * length, pos.other + 
-                           (1 - switch) * depth), side = c(side, 2, side, 
-                                                           2))
-    }
-    else if (side %in% c(2, 4)) {
-      switch <- ifelse(inside, 0, 1)
-      switch <- ifelse(side > 2, 1 - switch, switch)
-      loc <- getCoords(c(pos.other - switch * depth, pos - 
-                           0.5 * length, pos.other + (1 - switch) * depth, 
-                         pos + 0.5 * length), side = c(1, side, 1, side))
-    }
-  }
-  else if (length(pos) == 4) {
-    if (coords) {
-      loc <- pos
-    }
-    else {
-      loc <- getCoords(pos, side = c(1, 2, 1, 2))
-    }
-  }
-  mycolors <- c()
-  if (length(color) > 1) {
-    mycolors <- color
-  }
-  else if (!is.null(nCol)) {
-    if (color == "topo") {
-      mycolors <- topo.colors(nCol)
-    }
-    else if (color == "heat") {
-      mycolors <- heat.colors(nCol)
-    }
-    else if (color == "terrain") {
-      mycolors <- terrain.colors(nCol)
-    }
-    else if (color == "rainbow") {
-      mycolors <- rainbow(nCol)
-    }
-    else {
-      warning("Color %s not recognized. A palette of topo.colors is used instead.")
-      mycolors <- topo.colors(nCol)
-    }
-  }
-  else {
-    stop("No color palette provided.")
-  }
-  vals <- seq(min(valRange), max(valRange), length = length(mycolors))
-  if (!is.null(dec)) {
-    vals <- round(vals, dec[1])
-  }
-  im <- as.raster(mycolors[matrix(1:length(mycolors), ncol = 1)])
-  ticks <- c()
-  if (side%%2 == 1) {
-    rasterImage(t(im), loc[1], loc[2], loc[3], loc[4], col = mycolors, 
-                xpd = T)
-    rect(loc[1], loc[2], loc[3], loc[4], border = border.col, 
-         xpd = T)
-    ticks <- seq(loc[1], loc[3], length = n.seg)
-    segments(x0 = ticks, x1 = ticks, y0 = rep(loc[2], n.seg), 
-             y1 = rep(loc[4], n.seg), col = border.col, xpd = TRUE)
-  }
-  else {
-    rasterImage(rev(im), loc[1], loc[2], loc[3], loc[4], 
-                col = mycolors, xpd = T)
-    rect(loc[1], loc[2], loc[3], loc[4], border = border.col, 
-         xpd = T)
-    ticks <- seq(loc[2], loc[4], length = n.seg)
-    segments(x0 = rep(loc[1], n.seg), x1 = rep(loc[3], n.seg), 
-             y0 = ticks, y1 = ticks, col = border.col, xpd = TRUE)
-  }
-  determineDec <- function(x) {
-    out = max(unlist(lapply(strsplit(x, split = "\\."), function(y) {
-      return(ifelse(length(y) > 1, nchar(gsub("^([^0]*)([0]+)$", 
-                                              "\\1", as.character(y[2]))), 0))
-    })))
-    return(out)
-  }
-  labels = sprintf("%f", seq(min(valRange), max(valRange), 
-                             length = n.seg))
-  if (is.null(dec)) {
-    dec <- min(c(6, determineDec(labels)))
-  }
-  eval(parse(text = sprintf("labels = sprintf('%s', round(seq(min(valRange), max(valRange), length = n.seg), dec) )", 
-                            paste("%.", dec, "f", sep = ""))))
-  if (pos.num == 1) {
-    if (fit.margin) {
-      lab.height = max(strheight(labels)) * 0.8
-      max.pos = getFigCoords()[3]
-      if ((max.pos - loc[2]) < lab.height) {
-        warning("Increase bottom margin, because labels for legend do not fit.")
-      }
-    }
-    text(y = loc[2], x = ticks, labels = seq(min(valRange), 
-                                             max(valRange), length = n.seg), col = border.col, 
-         pos = 1, cex = 0.8, xpd = T)
-  }
-  else if (pos.num == 2) {
-    if (fit.margin) {
-      checkagain = TRUE
-      while (checkagain == TRUE) {
-        lab.width = (max(strwidth(labels)) + 0.5 * par()$cxy[1]) * 
-          0.8
-        min.pos = getFigCoords()[1]
-        if ((loc[1] - min.pos) < lab.width) {
-          if (!is.null(dec)) {
-            dec = max(c(0, dec - 1))
-            if (dec == 0) {
-              warning("Decimal set to 0 (dec=0), but the labels still don't fit in the margin. You may want to add the color legend to another side, or increase the margin of the plot.")
-              checkagain = FALSE
-            }
-          }
-          else {
-            tmp = max(unlist(lapply(strsplit(labels, 
-                                             split = "\\."), function(x) {
-                                               return(ifelse(length(x) > 1, nchar(x[2]), 
-                                                             0))
-                                             })))
-            dec = max(c(0, tmp - 1))
-            if (dec == 0) {
-              warning("Decimal set to 0 (dec=0), but the labels still don't fit in the margin. You may want to add the color legend to another side, or increase the margin of the plot.")
-              checkagain = FALSE
-            }
-          }
-          eval(parse(text = sprintf("labels = sprintf('%s', round(seq(min(valRange), max(valRange), length = n.seg), dec) )", 
-                                    paste("%.", dec, "f", sep = ""))))
-        }
-        else {
-          checkagain = FALSE
-        }
-      }
-    }
-    text(y = ticks, x = loc[1], labels = labels, pos = 2, 
-         cex = 0.8, col = border.col, xpd = T)
-  }
-  else if (pos.num == 3) {
-    if (fit.margin) {
-      lab.height = max(strheight(labels)) * 0.8
-      max.pos = getFigCoords()[4]
-      if ((max.pos - loc[4]) < lab.height) {
-        warning("Increase top margin, because labels for legend do not fit.")
-      }
-    }
-    text(y = loc[4], x = ticks, labels = seq(min(valRange), 
-                                             max(valRange), length = n.seg), col = border.col, 
-         pos = 3, cex = 0.8, xpd = T)
-  }
-  else if (pos.num == 4) {
-    if (fit.margin) {
-      checkagain = TRUE
-      while (checkagain == TRUE) {
-        lab.width = (max(strwidth(labels)) + 0.5 * par()$cxy[1]) * 
-          0.8
-        max.pos = getFigCoords()[2]
-        if ((max.pos - loc[3]) < lab.width) {
-          if (!is.null(dec)) {
-            dec = max(c(0, dec - 1))
-            if (dec == 0) {
-              warning("Decimal set to 0 (dec=0), but the labels still don't fit in the margin. You may want to add the color legend to another side, or increase the margin of the plot.")
-              checkagain = FALSE
-            }
-          }
-          else {
-            tmp = max(unlist(lapply(strsplit(labels, 
-                                             split = "\\."), function(x) {
-                                               return(ifelse(length(x) > 1, nchar(x[2]), 
-                                                             0))
-                                             })))
-            dec = max(c(0, tmp - 1))
-            if (dec == 0) {
-              warning("Decimal set to 0 (dec=0), but the labels still don't fit in the margin. You may want to add the color legend to another side, or increase the margin of the plot.")
-              checkagain = FALSE
-            }
-          }
-          eval(parse(text = sprintf("labels = sprintf('%s', round(seq(min(valRange), max(valRange), length = n.seg), dec) )", 
-                                    paste("%.", dec, "f", sep = ""))))
-        }
-        else {
-          checkagain = FALSE
-        }
-      }
-    }
-    text(y = ticks, x = loc[3] - .2, labels = labels, pos = 4, 
-         col = border.col, cex = cex, xpd = T)
-  }
-}

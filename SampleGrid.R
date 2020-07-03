@@ -1,6 +1,6 @@
-# jonashaslbeck@gmail.com; October 2018
+# jonashaslbeck@gmail.com; May 2020
 
-mainDir <- "/Volumes/Macintosh HD 2/Dropbox/VAR_vs_AR/3_code/VAR_vs_AR_code/"
+mainDir <- "Users/jonas/Dropbox/VAR_vs_AR/ARVAR/"
 
 # -----------------------------------------------------------------------------------
 # --------- Aux Functions -----------------------------------------------------------
@@ -15,22 +15,13 @@ f_eval <- function(A) {
   eig_val <- abs(eig$values)
   stable <- ifelse(all(eig_val < 1), 1, 0)
   
-  # Ratio
-  R <- mean(abs(diag(A))) / mean(abs(A[upper.tri(A) | lower.tri(A)]))
+  # Diagonal
+  D <- mean(abs(diag(A)))
   
-  # Exp
-  D <- mean(eig_val)
+  # Off-diagonal
+  OffD <- mean(abs(A[upper.tri(A) | lower.tri(A)]))
   
-  # Exp
-  eig_val_scale <- eig_val - min(eig_val)
-  eig_val_scale <- eig_val_scale / max(eig_val_scale)
-  realDim <- eig_val 
-  realDim_sc <- var(eig_val_scale)
-  
-  # ADet
-  Adet <- mean(abs(diag(A)))
-  
-  return(c(stable, R, D, realDim, realDim_sc, Adet))
+  return(c(stable, D, OffD))
   
 } # eoF
 
@@ -49,41 +40,46 @@ for(i in 1:nIter) r_A[[i]] <- apply(Laura_mm, 1:2, function(x) rnorm(1, x[1], x[
 # Evaluate
 out <- do.call(rbind, lapply(r_A, f_eval))
 out <- as.data.frame(out)
-colnames(out) <- c("Stable", "R", "D")
+colnames(out) <- c("Stable", "D", "OffD")
+table(out$Stable)
 out_stable <- out[out[, 1] == 1, 2:3]
 saveRDS(out_stable, file = "files/out_stable.RDS")
 
+n_box <- 15
+
+
 
 # Extract Cells with at least one sample
-n_cells <- (13-1)*(19-1)
+n_cells <- (n_box-1)^2
 m_cells <- matrix(NA, nrow = n_cells, ncol = 3)
-x_axis <- seq(0, 9, length=18+1)
-y_axis <- seq(0, .6, length=12+1)
 m_cell_Bounds <- matrix(NA, n_cells, ncol=4)
 
 counter <- 1
-for(i in 1:(19-1)) {
-  for(j in 1:(13-1)) {
+for(i in 1:(n_box-1)) {
+  for(j in 1:(n_box-1)) {
     
     # at least one sampled?
-    ind_x <- out_stable[, 1] >= x_axis[i] & out_stable[, 1] <= x_axis[i+1]
-    ind_y <- out_stable[, 2] >= y_axis[j] & out_stable[, 2] <= y_axis[j+1]
+    ind_x <- out_stable[, 1] >= x_seq[i] & out_stable[, 1] <= x_seq[i+1]
+    ind_y <- out_stable[, 2] >= y_seq[j] & out_stable[, 2] <= y_seq[j+1]
     
     m_cells[counter, 3] <- any(ind_x & ind_y)
     
     # compute layout mean of cell for later plotting
-    m_cells[counter, 1] <- (x_axis[i] + x_axis[i+1])/2
-    m_cells[counter, 2] <- (y_axis[j] + y_axis[j+1])/2
+    m_cells[counter, 1] <- (x_seq[i] + x_seq[i+1])/2
+    m_cells[counter, 2] <- (y_seq[j] + y_seq[j+1])/2
     
     # save cell bounds
-    m_cell_Bounds[counter, 1] <- x_axis[i]
-    m_cell_Bounds[counter, 2] <- x_axis[i+1]
-    m_cell_Bounds[counter, 3] <- y_axis[j]
-    m_cell_Bounds[counter, 4] <- y_axis[j+1]
+    m_cell_Bounds[counter, 1] <- x_seq[i]
+    m_cell_Bounds[counter, 2] <- x_seq[i+1]
+    m_cell_Bounds[counter, 3] <- y_seq[j]
+    m_cell_Bounds[counter, 4] <- y_seq[j+1]
     
     counter <- counter + 1
   }
 }
+
+# Look at results
+table(m_cells[, 3]) # about 1/3 have at least one 
 
 # Subset cells with at least one
 m_cell_fill <- m_cells[m_cells[, 3] == 1, ]
@@ -96,9 +92,64 @@ n_cells
 cell_def <- m_cell_Bounds[m_cells[, 3] == 1, ]
 
 
+# Flag nonempty cells
+
+# Make a Grid
+pdf("figures/App_SampledGrid_empty.pdf", height=6.2, width=6)
+
+plot.new()
+plot.window(xlim=c(0, .5), ylim=c(0, .2))
+axis(1)
+axis(2, las=2)
+title(xlab = "Mean Absolute Diagonal")
+title(ylab = "Mean Absolute Off-Diagonal")
+
+points(out$D, out$OffD, pch = 20, col = adjustcolor('black', alpha = .5))
+
+x_seq <- seq(0, .5, length=n_box)
+y_seq <- seq(0, .2, length=n_box)
+
+segments(x_seq, rep(0, n_box), x_seq, rep(.2, n_box))
+segments(rep(0, n_box), y_seq, rep(.5, n_box), y_seq)
+
+for(i in 1:74) text(m_cell_fill[i, 1], m_cell_fill[i,2], i, col="red")
+
+dev.off()
+
+
+
+
+# Plot the nonempty cells
+# Make a Grid
+pdf("figures/App_SampledGrid_empty_nonzero.pdf", height=6.2, width=6)
+
+plot.new()
+plot.window(xlim=c(0, .5), ylim=c(0, .2))
+axis(1)
+axis(2, las=2)
+title(xlab = "Mean Absolute Diagonal")
+title(ylab = "Mean Absolute Off-Diagonal")
+# points(out$D, out$OffD)
+
+x_seq <- seq(0, .5, length=n_box)
+y_seq <- seq(0, .2, length=n_box)
+
+x_length <- .5/n_box / 2
+y_length <- .2/n_box / 2
+
+rect(xleft = m_cell_fill[, 1] - x_length, 
+     ybottom = m_cell_fill[, 2] - y_length, 
+     xright = m_cell_fill[, 1] + x_length, 
+     ytop = m_cell_fill[, 2] + y_length)
+
+dev.off()
+
+
 # -----------------------------------------------------------------------------------
 # --------- Sampling the Grid -------------------------------------------------------
 # -----------------------------------------------------------------------------------
+
+# The goal here is to sample 100 models into each of the 74 non-empty cells above
 
 # --- Meta Stuff ---
 
@@ -109,6 +160,7 @@ target_cell <- 100
 # --- Repeat from here ---
 
 set.seed(1)
+
 for(d in 1:10000) { # d Batches
   
   # Simulate a couple
@@ -132,7 +184,7 @@ for(d in 1:10000) { # d Batches
         
         ind_cell <- which(horiz & vert)
         length_ind_cell <- length(l_CM[[ind_cell]])
-        if(length_ind_cell < 100) { # only ad dif not full yet
+        if(length_ind_cell < 100) { # only add if not full yet
           l_CM[[ind_cell]][[length_ind_cell + 1]] <- r_A[[i]]
         } # end if: full?
         
@@ -158,6 +210,4 @@ for(d in 1:10000) { # d Batches
   
 } # end for: 200 x 5000 batches
 
-saveRDS(l_CM, file = "Simulation_3_Variation_2Dim/l_CM_60cells.RDS")
-
-
+saveRDS(l_CM, file = "files/Models_74cells.RDS")
